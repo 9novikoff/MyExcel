@@ -59,31 +59,19 @@ namespace MyExcel
             }
         }
 
-        public string GetColumnName(int column)
+        public string GetColumnName(int columnNumber)
         {
-            int lettersAmount = 26;
-            string name = "";
+            string columnName = "";
 
-            if (column <= lettersAmount)
+            while (columnNumber > 0)
             {
-                string res = "" + (char)(64 + column);
-                return res;
+                int temp = (columnNumber - 1) % 26;
+                columnName = Convert.ToChar('A' + temp) + columnName;
+                columnNumber = (columnNumber - temp) / 26;
             }
-            else
-            {
-                for (int j = column; j > lettersAmount; j = j / lettersAmount)
-                {
-                    int mod = column % lettersAmount;
-                    int div = column / lettersAmount;
 
-                    name += (char)(div + 64);
-                    if (div <= lettersAmount)
-                    {
-                        name += (char)(mod + 65);
-                    }
-                }
-                return name;
-            }
+            return columnName;
+
         }
 
         public void SetCell(string cellName, string expression)
@@ -102,8 +90,10 @@ namespace MyExcel
             CellsDictionary[cellName].thisDepend.Clear();
 
             string refExpression = expression;
+
             Regex regex = new Regex(@"[A-Z]{1,2}[0-9]+");
             MatchCollection references = regex.Matches(expression);
+
             try
             {
                 while (references.Count > 0)
@@ -119,6 +109,9 @@ namespace MyExcel
 
                 double value = Calculator.Evaluate(expression);
 
+                if (value == double.NegativeInfinity || value == double.PositiveInfinity)
+                    throw new Exception();
+
                 CellsDictionary[cellName].Expression = refExpression;
                 CellsDictionary[cellName].Value = value;
 
@@ -132,7 +125,7 @@ namespace MyExcel
                 CellsDictionary[cellName].Value = 0;
                 CellsDictionary[cellName].Expression = "0";
                 CellsDictionary[cellName].thisDepend.Clear();
-                dgv[CellsDictionary[cellName].Column - 1, CellsDictionary[cellName].Row - 1].Value = "0";
+                dgv[CellsDictionary[cellName].Column - 1, CellsDictionary[cellName].Row - 1].Value = null;
             }
         }
 
@@ -185,39 +178,55 @@ namespace MyExcel
 
         public void AddRow()
         {
-            DataGridViewRow row = new DataGridViewRow();
-            row.HeaderCell.Value = (_rows + 1).ToString();
-            dgv.Rows.Add(row);
-            _rows++;
-
-            for(int i = 1; i <= _columns; i++)
+            try
             {
-                string cellName = GetColumnName(i) + _rows.ToString();
-                Cell cell = new Cell();
-                cell.Name = cellName;
-                cell.Column = i;
-                cell.Row = _rows;
-                CellsDictionary.Add(cellName, cell);
+                DataGridViewRow row = new DataGridViewRow();
+                row.HeaderCell.Value = (_rows + 1).ToString();
+                dgv.Rows.Add(row);
+                _rows++;
+
+                for (int i = 1; i <= _columns; i++)
+                {
+                    string cellName = GetColumnName(i) + _rows.ToString();
+                    Cell cell = new Cell();
+                    cell.Name = cellName;
+                    cell.Column = i;
+                    cell.Row = _rows;
+                    CellsDictionary.Add(cellName, cell);
+                }
+            }
+            catch
+            {
+                MessageBox.Show("Unable to create more rows!");
+                return;
             }
         }
 
         public void AddColumn()
         {
-            DataGridViewColumn column = new DataGridViewColumn();
-            column.Name = GetColumnName(_columns + 1);
-            Cell templateCell = new Cell();
-            column.CellTemplate = templateCell;
-            dgv.Columns.Add(column);
-            _columns++;
-
-            for (int i = 1; i <= _rows; i++)
+            try
             {
-                string cellName = column.HeaderCell.Value + i.ToString();
-                Cell cell = new Cell();
-                cell.Name = cellName;
-                cell.Column = _columns;
-                cell.Row = i;
-                CellsDictionary.Add(cellName, cell);
+                DataGridViewColumn column = new DataGridViewColumn();
+                column.Name = GetColumnName(_columns + 1);
+                Cell templateCell = new Cell();
+                column.CellTemplate = templateCell;
+                dgv.Columns.Add(column);
+                _columns++;
+ 
+                for (int i = 1; i <= _rows; i++)
+                {
+                    string cellName = column.HeaderCell.Value + i.ToString();
+                    Cell cell = new Cell();
+                    cell.Name = cellName;
+                    cell.Column = _columns;
+                    cell.Row = i;
+                    CellsDictionary.Add(cellName, cell);
+                }
+            }
+            catch
+            {
+                MessageBox.Show("Unable to create more columns!");
+                return;
             }
         }
 
@@ -281,11 +290,19 @@ namespace MyExcel
 
         private void SetFullTable()
         {
-            foreach(var pair in CellsDictionary)
+            for(int i = 1; i <= _columns; i++)
             {
-                SetCell(pair.Key, pair.Value.Expression);
-                dgv[pair.Value.Column - 1, pair.Value.Row - 1].Value = pair.Value.Value.ToString();
-                RefreshCells(pair.Key);
+                for(int j = 1; j <= _rows; j++)
+                {
+                    string cellName = GetColumnName(i) + j.ToString();
+
+                    var value = CellsDictionary[cellName].Value;
+
+                    if (value == 0 && CellsDictionary[cellName].Expression == "0")
+                        dgv[i - 1, j - 1].Value = null;
+                    else
+                        dgv[i - 1, j - 1].Value = value;
+                }
             }
         }
 
@@ -295,12 +312,29 @@ namespace MyExcel
             {
                 sw.WriteLine(_rows);
                 sw.WriteLine(_columns);
+
                 foreach(var pair in CellsDictionary)
                 {
                     sw.WriteLine(pair.Key);
+                    sw.WriteLine(pair.Value.Expression);
                     sw.WriteLine(pair.Value.Value);
                     sw.WriteLine(pair.Value.Row);
                     sw.WriteLine(pair.Value.Column);
+                    
+                    foreach(var item in pair.Value.dependOnThis)
+                    {
+                        sw.Write(item + " ");
+                    }
+
+                    sw.WriteLine();
+
+                    foreach (var item in pair.Value.thisDepend)
+                    {
+                        sw.Write(item + " ");
+                    }
+                    
+                    sw.WriteLine();
+
                 }
             }
         }
@@ -313,23 +347,38 @@ namespace MyExcel
                 _rows = Convert.ToInt32(sr.ReadLine());
                 _columns = Convert.ToInt32(sr.ReadLine());
 
-
-                for(int i = 1; i <= _rows; i++)
+                for (int i = 1; i <= _rows; i++)
                 {
                     for (int j = 1; j <= _columns; j++)
                     {
                         string cellName = sr.ReadLine();
+                        string expression = sr.ReadLine();
                         double value = Convert.ToDouble(sr.ReadLine());
                         int row = Convert.ToInt32(sr.ReadLine());
                         int column = Convert.ToInt32(sr.ReadLine());
+                        List<string> dOT = sr.ReadLine().Split(" ").ToList<string>();
+                        List<string> tD = sr.ReadLine().Split(" ").ToList<string>();
+
+                        var itemToRemove = dOT.SingleOrDefault(r => r == "");
+                        if (itemToRemove != null)
+                            dOT.Remove(itemToRemove);
+
+                        itemToRemove = tD.SingleOrDefault(r => r == "");
+                        if (itemToRemove != null)
+                            tD.Remove(itemToRemove);
 
                         Cell cell = new Cell();
 
-                        cell.Expression = value.ToString();
+                        cell.Name = cellName;
+                        cell.Expression = expression;
+                        cell.Value = value;
                         cell.Column = column;
                         cell.Row = row;
+                        cell.dependOnThis = dOT;
+                        cell.thisDepend = tD;
 
                         CellsDictionary[cellName] = cell;
+
                     }
                 }
 

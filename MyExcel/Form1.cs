@@ -14,8 +14,8 @@ namespace MyExcel
 {
     public partial class MyExcelForm : Form
     { 
-        const int Rows = 5;
-        const int Columns = 5; // 665 max
+        const int Rows = 20;
+        const int Columns = 20; // 655 max
         private Table _table = new Table(Rows, Columns); 
 
         public MyExcelForm()
@@ -72,6 +72,12 @@ namespace MyExcel
             {
                 int column = e.ColumnIndex;
                 int row = e.RowIndex;
+
+                if(senderGrid[column, row].Value == null)
+                {
+                    return;
+                }
+
                 string expression = senderGrid[column, row].Value.ToString();
 
                 string cellName = _table.GetColumnName(column + 1) + (row + 1).ToString();
@@ -89,10 +95,11 @@ namespace MyExcel
             var senderGrid = (DataGridView)sender;
 
             senderGrid.CellValueChanged -= dgv_CellValueChanged;
-            
-            double value = _table.CellsDictionary[_table.GetColumnName(e.ColumnIndex + 1) + (e.RowIndex + 1).ToString()].Value;
 
-            if(value == 0)
+            Cell cell = _table.CellsDictionary[_table.GetColumnName(e.ColumnIndex + 1) + (e.RowIndex + 1).ToString()];
+            double value = cell.Value;
+
+            if(value == 0 && cell.Expression == "0" )
             {
                 senderGrid[e.ColumnIndex, e.RowIndex].Value = null;
             }
@@ -144,11 +151,20 @@ namespace MyExcel
             {
                 string filePath = fileOpen.FileName;
 
+
+                dgv.CellValueChanged -= dgv_CellValueChanged;
+                dgv.CellEnter -= dgv_ChooseCell;
                 dgv.CellLeave -= dgv_CellLeave;
+
 
                 _table.OpenTable(filePath);
 
+
+                dgv.CellValueChanged += dgv_CellValueChanged;
                 dgv.CellLeave += dgv_CellLeave;
+                dgv.CellEnter += dgv_ChooseCell;
+
+
 
             }
         }
